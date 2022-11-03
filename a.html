@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <video id="video" autoplay playsinline muted></video>
+</body>
+<script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+<script>
+    var vConsole = new window.VConsole();
+    const ws = new WebSocket('ws://192.168.6.61:8080/message_websocket/a')
+    const RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection
+
+    const config = {
+        sdpSemantics: "unified-plan",
+        iceTransportPolicy: "all",
+        iceServers: [
+            {
+                urls: 'stun:47.114.110.197:23478',
+            }
+        ]
+    }
+    const pc = new RTCPeerConnection(config)
+
+    ws.addEventListener('message', (e) => {
+        const msg = JSON.parse(e.data)
+
+        if (msg.action === 'description') {
+            pc.setRemoteDescription(JSON.parse(msg.data))
+        }
+
+        if (msg.action === 'icecandidate') {
+            if (msg.data) {
+                pc.addIceCandidate(JSON.parse(msg.data))
+            }
+        }
+    });
+
+    pc.addEventListener('icecandidate', (e) => {
+        const msg = {
+            action: 'icecandidate',
+            to: 'b',
+            data: e.candidate
+        }
+        ws.send(JSON.stringify(msg))
+    })
+
+    navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: true,
+    }).then(async (stream) => {
+        document.querySelector('#video').srcObject = stream
+
+        stream.getTracks().forEach((track) => {
+            pc.addTrack(track, stream)
+        })
+
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        const msg = {
+            action: 'description',
+            to: 'b',
+            data: offer
+        }
+        ws.send(JSON.stringify(msg))
+    })
+</script>
+
+</html>
